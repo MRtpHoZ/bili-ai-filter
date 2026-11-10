@@ -1,4 +1,4 @@
-// 内容脚本：发现卡片 → IntersectionObserver 提前 200px 触发 → 走后台查标注 → 命中则淡出+隐藏。
+// 内容脚本：发现卡片 → IntersectionObserver 提前 200px 触发 → 走后台查标注 → 命中则淡出 + 满格占位。
 // 卡片 DOM 选择器集中在一处（CARD_SELECTORS），首页改版失效时是安全一侧（全部可见）。
 (() => {
   'use strict';
@@ -21,8 +21,6 @@
   let filteredCount = 0;
 
   const cards = new Map(); // cardEl -> rec
-  const hiddenStack = []; // 最近隐藏的 rec，撤销按 LIFO 弹
-  let undoEl = null;
   let observer = null;
   let discoverTimer = null;
 
@@ -33,9 +31,9 @@
   function injectStyle() {
     const style = document.createElement('style');
     style.textContent = [
-      '.qingliu-undo{position:fixed;left:16px;bottom:16px;z-index:2147483647;display:flex;align-items:center;gap:12px;padding:9px 14px;background:#fff;border:1px solid #e3e5e7;border-radius:8px;box-shadow:0 2px 10px rgba(0,0,0,.08);font-size:13px;color:#61666d;}',
-      '.qingliu-undo-btn{cursor:pointer;border:none;background:none;padding:0;font-size:13px;color:#00aeec;}',
-      '.qingliu-undo-btn:hover{text-decoration:underline;}',
+      '.qingliu-placeholder{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;background:#f1f2f3;border-radius:6px;color:#9499a0;font-size:13px;box-sizing:border-box;}',
+      '.qingliu-placeholder-btn{cursor:pointer;border:1px solid #c9ccd0;background:#fff;border-radius:4px;font-size:12px;color:#61666d;padding:3px 12px;}',
+      '.qingliu-placeholder-btn:hover{color:#00aeec;border-color:#00aeec;}',
       '.qingliu-banner{position:fixed;top:0;left:0;right:0;z-index:2147483647;background:#fb7299;color:#fff;text-align:center;padding:8px 40px;font-size:14px;line-height:1.5;}',
       '.qingliu-banner-close{position:absolute;right:12px;top:50%;transform:translateY(-50%);cursor:pointer;font-size:18px;line-height:1;opacity:.85;}',
     ].join('\n');
@@ -61,55 +59,63 @@
 
   function registerCard(card, bvid) {
     if (cards.has(card)) return;
-    const rec = { card, bvid, msg: undefined, querying: false, hidden: false };
+    const rec = { card, bvid, msg: undefined, querying: false, hidden: false, placeholder: null, gridItem: null, restorePosition: false };
     cards.set(card, rec);
     if (observer) observer.observe(card);
   }
 
-  function updateUndo() {
-    const n = hiddenStack.length;
-    if (n === 0) {
-      if (undoEl) { undoEl.remove(); undoEl = null; }
-      return;
+  // 首页卡片有两种：直接挂在网格下，或外面包一层 .feed-card。要满格占位得藏「网格项」
+  // 那一层（往上走到 parent 是 grid 容器的元素），否则藏里层卡片会留下一个空白格子。
+  function gridItemOf(card) {
+    let el = card;
+    while (el && el.parentElement) {
+      if (getComputedStyle(el.parentElement).display === 'grid') return el;
+      el = el.parentElement;
     }
-    if (!undoEl) {
-      undoEl = document.createElement('div');
-      undoEl.className = 'qingliu-undo';
-      const label = document.createElement('span');
-      const btn = document.createElement('button');
-      btn.type = 'button';
-      btn.className = 'qingliu-undo-btn';
-      btn.textContent = '撤销';
-      btn.addEventListener('click', undoLast);
-      undoEl.append(label, btn);
-      document.documentElement.appendChild(undoEl);
-    }
-    undoEl.querySelector('span').textContent = `已隐藏 ${n} 个视频`;
+    return card;
   }
 
-  function undoLast() {
-    const rec = hiddenStack.pop();
-    if (!rec) return;
-    whitelist.add(rec.bvid);
-    chrome.storage.local.set({ whitelist: [...whitelist] });
-    showCard(rec);
+  function buildPlaceholder(rec) {
+    const el = document.createElement('div');
+    el.className = 'qingliu-placeholder';
+    const label = document.createElement('span');
+    label.textContent = '已隐藏 1 个视频';
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'qingliu-placeholder-btn';
+    btn.textContent = '撤销';
+    btn.addEventListener('click', () => {
+      whitelist.add(rec.bvid);
+      chrome.storage.local.set({ whitelist: [...whitelist] });
+      showCard(rec);
+    });
+    el.append(label, btn);
+    return el;
   }
 
   function showCard(rec) {
     if (!rec.hidden) return;
     rec.hidden = false;
-    rec.card.style.display = '';
+    rec.card.style.visibility = '';
     rec.card.style.opacity = '';
     rec.card.style.transition = '';
-    const i = hiddenStack.indexOf(rec);
-    if (i !== -1) hiddenStack.splice(i, 1);
+    if (rec.placeholder && rec.placeholder.isConnected) rec.placeholder.remove();
+    rec.placeholder = null;
+    if (rec.restorePosition && rec.gridItem) rec.gridItem.style.position = '';
+    rec.restorePosition = false;
+    rec.gridItem = null;
     filteredCount = Math.max(0, filteredCount - 1);
-    updateUndo();
   }
 
   function hideCard(rec) {
     if (rec.hidden) return;
     rec.hidden = true;
+    const gridItem = gridItemOf(rec.card);
+    rec.gridItem = gridItem;
+    if (getComputedStyle(gridItem).position === 'static') {
+      gridItem.style.position = 'relative';
+      rec.restorePosition = true;
+    }
     const card = rec.card;
     card.style.transition = `opacity ${FADE_MS}ms ease`;
     card.style.opacity = '0';
@@ -119,13 +125,14 @@
         card.style.transition = '';
         return;
       }
-      card.style.display = 'none';
+      card.style.visibility = 'hidden';
       card.style.opacity = '';
       card.style.transition = '';
+      const ph = buildPlaceholder(rec);
+      rec.placeholder = ph;
+      gridItem.appendChild(ph);
     }, FADE_MS);
-    hiddenStack.push(rec);
     filteredCount++;
-    updateUndo();
   }
 
   function decide(rec) {
@@ -164,11 +171,8 @@
   function discover() {
     for (const [card, rec] of cards) {
       if (!card.isConnected) {
-        if (rec.hidden) {
-          filteredCount = Math.max(0, filteredCount - 1);
-          const i = hiddenStack.indexOf(rec);
-          if (i !== -1) hiddenStack.splice(i, 1);
-        }
+        if (rec.hidden) filteredCount = Math.max(0, filteredCount - 1);
+        if (rec.placeholder && rec.placeholder.isConnected) rec.placeholder.remove();
         cards.delete(card);
         if (observer) observer.unobserve(card);
         continue;
@@ -193,7 +197,6 @@
       if (!card) continue;
       registerCard(card, bvid);
     }
-    updateUndo();
   }
 
   function reapplyAll() {
