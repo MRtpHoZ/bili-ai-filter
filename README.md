@@ -62,3 +62,7 @@ test/              纯逻辑单测
 npm test          # 纯逻辑单测（bvid 提取 / 精确匹配 / manifest 结构）
 npm run verify-data  # 直接调接口核对样本 BV 的 argue_msg（需要网络）
 ```
+
+## 许可
+
+MIT License，全文见 `LICENSE`。可以自由使用、修改、再发布，保留版权与许可声明即可。
