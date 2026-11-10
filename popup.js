@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const { DEFAULT_KNOWN_TYPES, DEFAULT_SELECTED_TYPES } = globalThis.Qingliu;
+  const { DEFAULT_KNOWN_TYPES, DEFAULT_SELECTED_TYPES, migrateSettings, STORAGE_DEFAULTS } = globalThis.Qingliu;
 
   const master = document.getElementById('master');
   const typesEl = document.getElementById('types');
@@ -58,12 +58,16 @@
   });
 
   chrome.storage.local
-    .get({
-      enabled: true,
-      selectedTypes: [...DEFAULT_SELECTED_TYPES],
-      knownTypes: [...DEFAULT_KNOWN_TYPES],
-    })
-    .then((data) => {
+    .get(STORAGE_DEFAULTS)
+    .then((raw) => {
+      const data = migrateSettings(raw);
+      if (data !== raw) {
+        chrome.storage.local.set({
+          schemaVersion: data.schemaVersion,
+          selectedTypes: data.selectedTypes,
+          knownTypes: data.knownTypes,
+        });
+      }
       master.checked = !!data.enabled;
       selectedTypes = new Set(data.selectedTypes || []);
       knownTypes = [...(data.knownTypes || [])];

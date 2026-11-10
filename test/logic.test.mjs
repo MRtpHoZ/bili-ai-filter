@@ -38,9 +38,13 @@ test('无标注(空串)一律不过滤', () => {
   assert.equal(Q.shouldFilter('', selected), false);
 });
 
-test('默认只勾选 AI 生成内容', () => {
-  assert.deepEqual(Q.DEFAULT_SELECTED_TYPES, ['含AI生成内容']);
+test('默认勾选两种 AI 类型', () => {
+  assert.deepEqual(Q.DEFAULT_SELECTED_TYPES, [
+    '含AI生成内容',
+    '作者声明：该视频使用人工智能合成技术',
+  ]);
   assert.ok(Q.DEFAULT_KNOWN_TYPES.includes('含AI生成内容'));
+  assert.ok(Q.DEFAULT_KNOWN_TYPES.includes('作者声明：该视频使用人工智能合成技术'));
 });
 
 test('manifest 结构合法且覆盖目标页面', () => {
@@ -70,4 +74,65 @@ test('manifest 结构合法且覆盖目标页面', () => {
 test('全类型取消勾选 = 不过滤任何视频', () => {
   assert.equal(Q.shouldFilter('含AI生成内容', new Set()), false);
   assert.equal(Q.shouldFilter('含虚构演绎内容', new Set()), false);
+});
+
+test('新类型「作者声明：该视频使用人工智能合成技术」默认被过滤', () => {
+  const selected = new Set(Q.DEFAULT_SELECTED_TYPES);
+  assert.equal(Q.shouldFilter('作者声明：该视频使用人工智能合成技术', selected), true);
+});
+
+test('其他已观测类型仍默认不过滤', () => {
+  const selected = new Set(Q.DEFAULT_SELECTED_TYPES);
+  assert.equal(Q.shouldFilter('含虚构演绎内容', selected), false);
+  assert.equal(Q.shouldFilter('个人观点，仅供参考', selected), false);
+  assert.equal(Q.shouldFilter('专业动作，非专业人士请勿模仿', selected), false);
+  assert.equal(Q.shouldFilter('内容含营销信息', selected), false);
+});
+
+test('精确匹配不受影响：近义不误杀', () => {
+  const selected = new Set(Q.DEFAULT_SELECTED_TYPES);
+  assert.equal(Q.shouldFilter('该视频使用人工智能合成技术', selected), false);
+  assert.equal(Q.shouldFilter('含AI生成内容', selected), true);
+  assert.equal(Q.shouldFilter('', selected), false);
+});
+
+test('旧 profile 升级：schemaVersion 落后时补进新默认类型', () => {
+  const old = {
+    enabled: true,
+    selectedTypes: ['含AI生成内容'],
+    knownTypes: ['含AI生成内容', '含虚构演绎内容', '个人观点，仅供参考', '专业动作，非专业人士请勿模仿'],
+  };
+  const migrated = Q.migrateSettings(old);
+  assert.notEqual(migrated, old);
+  assert.equal(migrated.schemaVersion, Q.SCHEMA_VERSION);
+  assert.ok(migrated.selectedTypes.includes('作者声明：该视频使用人工智能合成技术'));
+  assert.ok(migrated.selectedTypes.includes('含AI生成内容'));
+  assert.ok(migrated.knownTypes.includes('作者声明：该视频使用人工智能合成技术'));
+});
+
+test('已是最新 schemaVersion 则原样返回，不重写', () => {
+  const cur = { schemaVersion: Q.SCHEMA_VERSION, selectedTypes: ['含AI生成内容'], knownTypes: [] };
+  assert.equal(Q.migrateSettings(cur), cur);
+});
+
+test('STORAGE_DEFAULTS 点名 schemaVersion，get 能把它读出来', () => {
+  assert.equal(Q.STORAGE_DEFAULTS.schemaVersion, 1);
+  assert.ok(Q.STORAGE_DEFAULTS.selectedTypes.includes('作者声明：该视频使用人工智能合成技术'));
+});
+
+test('接线：当前版本 + 用户取消默认类型 → 不被补回', () => {
+  // 模拟 chrome.storage.local.get(defaults)：只返回 defaults 里点名的 key
+  const storage = {
+    schemaVersion: Q.SCHEMA_VERSION,
+    selectedTypes: [],
+    knownTypes: [],
+    enabled: true,
+    whitelist: [],
+  };
+  const raw = Object.fromEntries(
+    Object.keys(Q.STORAGE_DEFAULTS).map((k) => [k, k in storage ? storage[k] : Q.STORAGE_DEFAULTS[k]])
+  );
+  const out = Q.migrateSettings(raw);
+  assert.equal(out, raw);
+  assert.deepEqual(out.selectedTypes, []);
 });
