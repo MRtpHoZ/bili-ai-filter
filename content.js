@@ -21,6 +21,8 @@
   let filteredCount = 0;
 
   const cards = new Map(); // cardEl -> rec
+  const hiddenStack = []; // 最近隐藏的 rec，撤销按 LIFO 弹
+  let undoEl = null;
   let observer = null;
   let discoverTimer = null;
 
@@ -31,9 +33,9 @@
   function injectStyle() {
     const style = document.createElement('style');
     style.textContent = [
-      '.qingliu-placeholder{display:flex;align-items:center;justify-content:space-between;min-height:26px;padding:2px 10px;background:rgba(0,0,0,.04);border-radius:6px;font-size:12px;color:#9499a0;box-sizing:border-box;}',
-      '.qingliu-placeholder-btn{cursor:pointer;border:1px solid #c9ccd0;background:transparent;border-radius:4px;font-size:12px;color:#61666d;padding:1px 8px;}',
-      '.qingliu-placeholder-btn:hover{color:#00aeec;border-color:#00aeec;}',
+      '.qingliu-undo{position:fixed;left:16px;bottom:16px;z-index:2147483647;display:flex;align-items:center;gap:12px;padding:9px 14px;background:#fff;border:1px solid #e3e5e7;border-radius:8px;box-shadow:0 2px 10px rgba(0,0,0,.08);font-size:13px;color:#61666d;}',
+      '.qingliu-undo-btn{cursor:pointer;border:none;background:none;padding:0;font-size:13px;color:#00aeec;}',
+      '.qingliu-undo-btn:hover{text-decoration:underline;}',
       '.qingliu-banner{position:fixed;top:0;left:0;right:0;z-index:2147483647;background:#fb7299;color:#fff;text-align:center;padding:8px 40px;font-size:14px;line-height:1.5;}',
       '.qingliu-banner-close{position:absolute;right:12px;top:50%;transform:translateY(-50%);cursor:pointer;font-size:18px;line-height:1;opacity:.85;}',
     ].join('\n');
@@ -59,27 +61,38 @@
 
   function registerCard(card, bvid) {
     if (cards.has(card)) return;
-    const rec = { card, bvid, msg: undefined, querying: false, hidden: false, placeholder: null };
+    const rec = { card, bvid, msg: undefined, querying: false, hidden: false };
     cards.set(card, rec);
     if (observer) observer.observe(card);
   }
 
-  function buildPlaceholder(rec) {
-    const el = document.createElement('div');
-    el.className = 'qingliu-placeholder';
-    const label = document.createElement('span');
-    label.textContent = '已隐藏 1 个视频';
-    const btn = document.createElement('button');
-    btn.type = 'button';
-    btn.className = 'qingliu-placeholder-btn';
-    btn.textContent = '我看错了';
-    btn.addEventListener('click', () => {
-      whitelist.add(rec.bvid);
-      chrome.storage.local.set({ whitelist: [...whitelist] });
-      showCard(rec);
-    });
-    el.append(label, btn);
-    return el;
+  function updateUndo() {
+    const n = hiddenStack.length;
+    if (n === 0) {
+      if (undoEl) { undoEl.remove(); undoEl = null; }
+      return;
+    }
+    if (!undoEl) {
+      undoEl = document.createElement('div');
+      undoEl.className = 'qingliu-undo';
+      const label = document.createElement('span');
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'qingliu-undo-btn';
+      btn.textContent = '撤销';
+      btn.addEventListener('click', undoLast);
+      undoEl.append(label, btn);
+      document.documentElement.appendChild(undoEl);
+    }
+    undoEl.querySelector('span').textContent = `已隐藏 ${n} 个视频`;
+  }
+
+  function undoLast() {
+    const rec = hiddenStack.pop();
+    if (!rec) return;
+    whitelist.add(rec.bvid);
+    chrome.storage.local.set({ whitelist: [...whitelist] });
+    showCard(rec);
   }
 
   function showCard(rec) {
@@ -88,9 +101,10 @@
     rec.card.style.display = '';
     rec.card.style.opacity = '';
     rec.card.style.transition = '';
-    if (rec.placeholder && rec.placeholder.isConnected) rec.placeholder.remove();
-    rec.placeholder = null;
+    const i = hiddenStack.indexOf(rec);
+    if (i !== -1) hiddenStack.splice(i, 1);
     filteredCount = Math.max(0, filteredCount - 1);
+    updateUndo();
   }
 
   function hideCard(rec) {
@@ -108,11 +122,10 @@
       card.style.display = 'none';
       card.style.opacity = '';
       card.style.transition = '';
-      const ph = buildPlaceholder(rec);
-      rec.placeholder = ph;
-      if (card.parentNode) card.parentNode.insertBefore(ph, card.nextSibling);
     }, FADE_MS);
+    hiddenStack.push(rec);
     filteredCount++;
+    updateUndo();
   }
 
   function decide(rec) {
@@ -151,8 +164,11 @@
   function discover() {
     for (const [card, rec] of cards) {
       if (!card.isConnected) {
-        if (rec.hidden) filteredCount = Math.max(0, filteredCount - 1);
-        if (rec.placeholder && rec.placeholder.isConnected) rec.placeholder.remove();
+        if (rec.hidden) {
+          filteredCount = Math.max(0, filteredCount - 1);
+          const i = hiddenStack.indexOf(rec);
+          if (i !== -1) hiddenStack.splice(i, 1);
+        }
         cards.delete(card);
         if (observer) observer.unobserve(card);
         continue;
@@ -177,6 +193,7 @@
       if (!card) continue;
       registerCard(card, bvid);
     }
+    updateUndo();
   }
 
   function reapplyAll() {
