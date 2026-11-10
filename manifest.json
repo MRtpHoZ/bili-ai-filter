@@ -1,0 +1,25 @@
+{
+  "manifest_version": 3,
+  "name": "清流 · B站 AI 内容过滤器",
+  "version": "0.1.0",
+  "description": "读 B 站官方内容标注，把 AI 生成的视频从推荐流里拿掉。不训练模型、不上传图片、不调第三方接口。",
+  "permissions": ["storage"],
+  "host_permissions": ["https://api.bilibili.com/*"],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://www.bilibili.com/*",
+        "https://search.bilibili.com/*"
+      ],
+      "js": ["core.js", "content.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "清流"
+  }
+}
