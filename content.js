@@ -3,7 +3,7 @@
 (() => {
   'use strict';
 
-  const { extractBvid, shouldFilter, DEFAULT_KNOWN_TYPES, DEFAULT_SELECTED_TYPES } = globalThis.Qingliu;
+  const { extractBvid, shouldFilter, DEFAULT_KNOWN_TYPES, DEFAULT_SELECTED_TYPES, migrateSettings } = globalThis.Qingliu;
 
   const CARD_SELECTORS = [
     '.bili-video-card',
@@ -200,12 +200,20 @@
   }
 
   async function loadSettings() {
-    const data = await chrome.storage.local.get({
+    const raw = await chrome.storage.local.get({
       enabled: true,
       selectedTypes: [...DEFAULT_SELECTED_TYPES],
       whitelist: [],
       knownTypes: [...DEFAULT_KNOWN_TYPES],
     });
+    const data = migrateSettings(raw);
+    if (data !== raw) {
+      chrome.storage.local.set({
+        schemaVersion: data.schemaVersion,
+        selectedTypes: data.selectedTypes,
+        knownTypes: data.knownTypes,
+      });
+    }
     applySettings(data);
   }
 

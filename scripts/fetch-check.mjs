@@ -6,6 +6,7 @@ const SAMPLE = [
   ['BV1JM4H6hEVi', '含虚构演绎内容'],
   ['BV12m4j6bEFx', '含虚构演绎内容'],
   ['BV1WEWs66EBP', '个人观点，仅供参考'],
+  ['BV1t5Z3BRESr', '作者声明：该视频使用人工智能合成技术'],
 ];
 
 async function argueMsg(bvid) {
