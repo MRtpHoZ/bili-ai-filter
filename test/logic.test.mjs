@@ -110,6 +110,17 @@ test('旧 profile 升级：schemaVersion 落后时补进新默认类型', () => 
   assert.ok(migrated.knownTypes.includes('作者声明：该视频使用人工智能合成技术'));
 });
 
+test('旧 profile 升级：补默认隐藏方式为补位', () => {
+  const migrated = Q.migrateSettings({ enabled: true, selectedTypes: [], knownTypes: [] });
+  assert.equal(migrated.mode, Q.DEFAULT_MODE);
+  assert.equal(Q.DEFAULT_MODE, 'reflow');
+});
+
+test('旧 profile 升级：已选的补位方式保留', () => {
+  const migrated = Q.migrateSettings({ enabled: true, selectedTypes: [], knownTypes: [], mode: 'reflow' });
+  assert.equal(migrated.mode, 'reflow');
+});
+
 test('已是最新 schemaVersion 则原样返回，不重写', () => {
   const cur = { schemaVersion: Q.SCHEMA_VERSION, selectedTypes: ['含AI生成内容'], knownTypes: [] };
   assert.equal(Q.migrateSettings(cur), cur);

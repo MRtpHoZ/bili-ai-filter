@@ -1,10 +1,11 @@
 (() => {
   'use strict';
 
-  const { DEFAULT_KNOWN_TYPES, DEFAULT_SELECTED_TYPES, migrateSettings, STORAGE_DEFAULTS } = globalThis.Qingliu;
+  const { DEFAULT_KNOWN_TYPES, DEFAULT_SELECTED_TYPES, DEFAULT_MODE, migrateSettings, STORAGE_DEFAULTS } = globalThis.Qingliu;
 
   const master = document.getElementById('master');
   const typesEl = document.getElementById('types');
+  const modeEl = document.getElementById('mode');
   const countEl = document.getElementById('count');
 
   let knownTypes = [...DEFAULT_KNOWN_TYPES];
@@ -29,6 +30,17 @@
     }
   }
 
+  function setMode(value) {
+    const input = modeEl.querySelector(`input[value="${value}"]`);
+    if (input) input.checked = true;
+  }
+
+  modeEl.addEventListener('change', (e) => {
+    if (e.target.name === 'mode') {
+      chrome.storage.local.set({ mode: e.target.value });
+    }
+  });
+
   master.addEventListener('change', () => {
     chrome.storage.local.set({ enabled: master.checked });
   });
@@ -47,6 +59,7 @@
   chrome.storage.onChanged.addListener((changes, area) => {
     if (area !== 'local') return;
     if (changes.enabled) master.checked = !!changes.enabled.newValue;
+    if (changes.mode) setMode(changes.mode.newValue);
     if (changes.knownTypes) {
       knownTypes = [...(changes.knownTypes.newValue || [])];
       renderTypes();
@@ -64,11 +77,13 @@
       if (data !== raw) {
         chrome.storage.local.set({
           schemaVersion: data.schemaVersion,
+          mode: data.mode,
           selectedTypes: data.selectedTypes,
           knownTypes: data.knownTypes,
         });
       }
       master.checked = !!data.enabled;
+      setMode(data.mode || DEFAULT_MODE);
       selectedTypes = new Set(data.selectedTypes || []);
       knownTypes = [...(data.knownTypes || [])];
       renderTypes();

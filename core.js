@@ -18,13 +18,17 @@
     '作者声明：该视频使用人工智能合成技术',
   ];
 
+  // 隐藏方式：补位（默认，后面视频顶上来）或占位（原位留灰块，排版不变）。
+  var DEFAULT_MODE = 'reflow';
+
   // 存储 schema 版本。落后于此值就合并一次当前默认类型再写回。
-  var SCHEMA_VERSION = 2;
+  var SCHEMA_VERSION = 3;
 
   // chrome.storage.local 的读取默认值，content/popup 共用。schemaVersion 必须在点名名单里，
   // 否则 get 不会把它读出来，迁移会每次都重跑（默认 1 = v0.1 未迁移）。
   var STORAGE_DEFAULTS = {
     enabled: true,
+    mode: DEFAULT_MODE,
     selectedTypes: DEFAULT_SELECTED_TYPES.slice(),
     whitelist: [],
     knownTypes: DEFAULT_KNOWN_TYPES.slice(),
@@ -40,6 +44,7 @@
     DEFAULT_KNOWN_TYPES.forEach(function (t) { known.add(t); });
     return Object.assign({}, data, {
       schemaVersion: SCHEMA_VERSION,
+      mode: data.mode || DEFAULT_MODE,
       selectedTypes: Array.from(selected),
       knownTypes: Array.from(known),
     });
@@ -61,6 +66,7 @@
     STORAGE_DEFAULTS: STORAGE_DEFAULTS,
     DEFAULT_KNOWN_TYPES: DEFAULT_KNOWN_TYPES,
     DEFAULT_SELECTED_TYPES: DEFAULT_SELECTED_TYPES,
+    DEFAULT_MODE: DEFAULT_MODE,
     extractBvid: extractBvid,
     shouldFilter: shouldFilter,
     migrateSettings: migrateSettings,

@@ -1,9 +1,9 @@
-// 内容脚本：发现卡片 → IntersectionObserver 提前 200px 触发 → 走后台查标注 → 命中则淡出 + 满格占位。
+// 内容脚本：发现卡片 → IntersectionObserver 提前 200px 触发 → 走后台查标注 → 命中按 mode 隐藏。
 // 卡片 DOM 选择器集中在一处（CARD_SELECTORS），首页改版失效时是安全一侧（全部可见）。
 (() => {
   'use strict';
 
-  const { extractBvid, shouldFilter, DEFAULT_KNOWN_TYPES, DEFAULT_SELECTED_TYPES, migrateSettings, STORAGE_DEFAULTS } = globalThis.Qingliu;
+  const { extractBvid, shouldFilter, DEFAULT_KNOWN_TYPES, DEFAULT_SELECTED_TYPES, DEFAULT_MODE, migrateSettings, STORAGE_DEFAULTS } = globalThis.Qingliu;
 
   const CARD_SELECTORS = [
     '.bili-video-card',
@@ -15,12 +15,15 @@
   const FADE_MS = 150;
 
   let enabled = true;
+  let mode = DEFAULT_MODE; // 'placeholder'（占位，排版不变）| 'reflow'（补位，后面顶上来）
   let selectedTypes = new Set(DEFAULT_SELECTED_TYPES);
   let whitelist = new Set();
   let knownTypes = new Set(DEFAULT_KNOWN_TYPES);
   let filteredCount = 0;
 
   const cards = new Map(); // cardEl -> rec
+  const hiddenStack = []; // 补位模式的撤销栈，按 LIFO 弹
+  let undoEl = null;
   let observer = null;
   let discoverTimer = null;
 
@@ -34,6 +37,9 @@
       '.qingliu-placeholder{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;background:#f1f2f3;border-radius:6px;color:#9499a0;font-size:13px;box-sizing:border-box;}',
       '.qingliu-placeholder-btn{cursor:pointer;border:1px solid #c9ccd0;background:#fff;border-radius:4px;font-size:12px;color:#61666d;padding:3px 12px;}',
       '.qingliu-placeholder-btn:hover{color:#00aeec;border-color:#00aeec;}',
+      '.qingliu-undo{position:fixed;left:16px;bottom:16px;z-index:2147483647;display:flex;align-items:center;gap:12px;padding:9px 14px;background:#fff;border:1px solid #e3e5e7;border-radius:8px;box-shadow:0 2px 10px rgba(0,0,0,.08);font-size:13px;color:#61666d;}',
+      '.qingliu-undo-btn{cursor:pointer;border:none;background:none;padding:0;font-size:13px;color:#00aeec;}',
+      '.qingliu-undo-btn:hover{text-decoration:underline;}',
       '.qingliu-banner{position:fixed;top:0;left:0;right:0;z-index:2147483647;background:#fb7299;color:#fff;text-align:center;padding:8px 40px;font-size:14px;line-height:1.5;}',
       '.qingliu-banner-close{position:absolute;right:12px;top:50%;transform:translateY(-50%);cursor:pointer;font-size:18px;line-height:1;opacity:.85;}',
     ].join('\n');
@@ -64,8 +70,8 @@
     if (observer) observer.observe(card);
   }
 
-  // 首页卡片有两种：直接挂在网格下，或外面包一层 .feed-card。要满格占位得藏「网格项」
-  // 那一层（往上走到 parent 是 grid 容器的元素），否则藏里层卡片会留下一个空白格子。
+  // 首页卡片有两种：直接挂在网格下，或外面包一层 .feed-card。两种模式都要先定位到
+  // 「网格项」那一层（往上走到 parent 是 grid 容器的元素），否则藏里层卡片外面那层还占格。
   function gridItemOf(card) {
     let el = card;
     while (el && el.parentElement) {
@@ -93,18 +99,53 @@
     return el;
   }
 
+  function updateUndo() {
+    const n = hiddenStack.length;
+    if (n === 0) {
+      if (undoEl) { undoEl.remove(); undoEl = null; }
+      return;
+    }
+    if (!undoEl) {
+      undoEl = document.createElement('div');
+      undoEl.className = 'qingliu-undo';
+      const label = document.createElement('span');
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'qingliu-undo-btn';
+      btn.textContent = '撤销';
+      btn.addEventListener('click', undoLast);
+      undoEl.append(label, btn);
+      document.documentElement.appendChild(undoEl);
+    }
+    undoEl.querySelector('span').textContent = `已隐藏 ${n} 个视频`;
+  }
+
+  function undoLast() {
+    const rec = hiddenStack.pop();
+    if (!rec) return;
+    whitelist.add(rec.bvid);
+    chrome.storage.local.set({ whitelist: [...whitelist] });
+    showCard(rec);
+  }
+
+  // 统一恢复：无论当前是哪种模式，把卡片所有可能的隐藏痕迹清干净，再回计数。
   function showCard(rec) {
     if (!rec.hidden) return;
     rec.hidden = false;
+    const gridItem = rec.gridItem || rec.card;
+    gridItem.style.display = '';
+    gridItem.style.opacity = '';
+    gridItem.style.transition = '';
     rec.card.style.visibility = '';
-    rec.card.style.opacity = '';
-    rec.card.style.transition = '';
     if (rec.placeholder && rec.placeholder.isConnected) rec.placeholder.remove();
     rec.placeholder = null;
     if (rec.restorePosition && rec.gridItem) rec.gridItem.style.position = '';
     rec.restorePosition = false;
     rec.gridItem = null;
+    const i = hiddenStack.indexOf(rec);
+    if (i !== -1) hiddenStack.splice(i, 1);
     filteredCount = Math.max(0, filteredCount - 1);
+    updateUndo();
   }
 
   function hideCard(rec) {
@@ -112,27 +153,36 @@
     rec.hidden = true;
     const gridItem = gridItemOf(rec.card);
     rec.gridItem = gridItem;
-    if (getComputedStyle(gridItem).position === 'static') {
-      gridItem.style.position = 'relative';
-      rec.restorePosition = true;
-    }
-    const card = rec.card;
-    card.style.transition = `opacity ${FADE_MS}ms ease`;
-    card.style.opacity = '0';
-    setTimeout(() => {
-      if (!rec.hidden) {
-        card.style.opacity = '';
-        card.style.transition = '';
-        return;
+
+    if (mode === 'reflow') {
+      // 补位：隐藏整个网格项，grid 自动把后面卡片顶上来。
+      gridItem.style.transition = `opacity ${FADE_MS}ms ease`;
+      gridItem.style.opacity = '0';
+      setTimeout(() => {
+        if (!rec.hidden) {
+          gridItem.style.opacity = '';
+          gridItem.style.transition = '';
+          return;
+        }
+        gridItem.style.display = 'none';
+        gridItem.style.opacity = '';
+        gridItem.style.transition = '';
+      }, FADE_MS);
+      hiddenStack.push(rec);
+      filteredCount++;
+      updateUndo();
+    } else {
+      // 占位：藏里层内容，原位铺整格灰块，不动布局。
+      if (getComputedStyle(gridItem).position === 'static') {
+        gridItem.style.position = 'relative';
+        rec.restorePosition = true;
       }
-      card.style.visibility = 'hidden';
-      card.style.opacity = '';
-      card.style.transition = '';
+      rec.card.style.visibility = 'hidden';
       const ph = buildPlaceholder(rec);
       rec.placeholder = ph;
       gridItem.appendChild(ph);
-    }, FADE_MS);
-    filteredCount++;
+      filteredCount++;
+    }
   }
 
   function decide(rec) {
@@ -171,7 +221,11 @@
   function discover() {
     for (const [card, rec] of cards) {
       if (!card.isConnected) {
-        if (rec.hidden) filteredCount = Math.max(0, filteredCount - 1);
+        if (rec.hidden) {
+          filteredCount = Math.max(0, filteredCount - 1);
+          const i = hiddenStack.indexOf(rec);
+          if (i !== -1) hiddenStack.splice(i, 1);
+        }
         if (rec.placeholder && rec.placeholder.isConnected) rec.placeholder.remove();
         cards.delete(card);
         if (observer) observer.unobserve(card);
@@ -197,6 +251,7 @@
       if (!card) continue;
       registerCard(card, bvid);
     }
+    updateUndo();
   }
 
   function reapplyAll() {
@@ -212,10 +267,19 @@
   }
 
   function applySettings(data) {
+    const newMode = data.mode === 'reflow' ? 'reflow' : 'placeholder';
+    const modeChanged = newMode !== mode;
     enabled = !!data.enabled;
     selectedTypes = new Set(data.selectedTypes || []);
     whitelist = new Set(data.whitelist || []);
     knownTypes = new Set(data.knownTypes || []);
+    mode = newMode;
+    if (modeChanged) {
+      // 模式变了：先把已隐藏的全部恢复，再按新模式重新判断，避免旧模式的痕迹残留。
+      for (const rec of cards.values()) {
+        if (rec.hidden) showCard(rec);
+      }
+    }
     reapplyAll();
   }
 
@@ -225,6 +289,7 @@
     if (data !== raw) {
       chrome.storage.local.set({
         schemaVersion: data.schemaVersion,
+        mode: data.mode,
         selectedTypes: data.selectedTypes,
         knownTypes: data.knownTypes,
       });
@@ -282,6 +347,7 @@
     if (msg && msg.type === 'GET_STATE') {
       sendResponse({
         enabled,
+        mode,
         filteredCount,
         selectedTypes: [...selectedTypes],
         knownTypes: [...knownTypes],
@@ -291,7 +357,7 @@
 
   chrome.storage.onChanged.addListener((changes, area) => {
     if (area !== 'local') return;
-    const keys = ['enabled', 'selectedTypes', 'whitelist', 'knownTypes'];
+    const keys = ['enabled', 'mode', 'selectedTypes', 'whitelist', 'knownTypes'];
     if (keys.some((k) => changes[k])) loadSettings();
   });
 
