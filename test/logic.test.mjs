@@ -114,3 +114,25 @@ test('已是最新 schemaVersion 则原样返回，不重写', () => {
   const cur = { schemaVersion: Q.SCHEMA_VERSION, selectedTypes: ['含AI生成内容'], knownTypes: [] };
   assert.equal(Q.migrateSettings(cur), cur);
 });
+
+test('STORAGE_DEFAULTS 点名 schemaVersion，get 能把它读出来', () => {
+  assert.equal(Q.STORAGE_DEFAULTS.schemaVersion, 1);
+  assert.ok(Q.STORAGE_DEFAULTS.selectedTypes.includes('作者声明：该视频使用人工智能合成技术'));
+});
+
+test('接线：当前版本 + 用户取消默认类型 → 不被补回', () => {
+  // 模拟 chrome.storage.local.get(defaults)：只返回 defaults 里点名的 key
+  const storage = {
+    schemaVersion: Q.SCHEMA_VERSION,
+    selectedTypes: [],
+    knownTypes: [],
+    enabled: true,
+    whitelist: [],
+  };
+  const raw = Object.fromEntries(
+    Object.keys(Q.STORAGE_DEFAULTS).map((k) => [k, k in storage ? storage[k] : Q.STORAGE_DEFAULTS[k]])
+  );
+  const out = Q.migrateSettings(raw);
+  assert.equal(out, raw);
+  assert.deepEqual(out.selectedTypes, []);
+});

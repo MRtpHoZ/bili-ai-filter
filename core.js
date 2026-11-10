@@ -21,6 +21,16 @@
   // 存储 schema 版本。落后于此值就合并一次当前默认类型再写回。
   var SCHEMA_VERSION = 2;
 
+  // chrome.storage.local 的读取默认值，content/popup 共用。schemaVersion 必须在点名名单里，
+  // 否则 get 不会把它读出来，迁移会每次都重跑（默认 1 = v0.1 未迁移）。
+  var STORAGE_DEFAULTS = {
+    enabled: true,
+    selectedTypes: DEFAULT_SELECTED_TYPES.slice(),
+    whitelist: [],
+    knownTypes: DEFAULT_KNOWN_TYPES.slice(),
+    schemaVersion: 1,
+  };
+
   // 老 profile 升级：版本落后时把当前默认类型合并进已存选择，只跑一次。
   function migrateSettings(data) {
     if (!data || (data.schemaVersion || 1) >= SCHEMA_VERSION) return data;
@@ -48,6 +58,7 @@
   root.Qingliu = {
     BVID_RE: BVID_RE,
     SCHEMA_VERSION: SCHEMA_VERSION,
+    STORAGE_DEFAULTS: STORAGE_DEFAULTS,
     DEFAULT_KNOWN_TYPES: DEFAULT_KNOWN_TYPES,
     DEFAULT_SELECTED_TYPES: DEFAULT_SELECTED_TYPES,
     extractBvid: extractBvid,
