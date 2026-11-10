@@ -18,8 +18,8 @@
     '作者声明：该视频使用人工智能合成技术',
   ];
 
-  // 隐藏方式：占位（原位留灰块，排版不变）或补位（后面视频顶上来）。
-  var DEFAULT_MODE = 'placeholder';
+  // 隐藏方式：补位（默认，后面视频顶上来）或占位（原位留灰块，排版不变）。
+  var DEFAULT_MODE = 'reflow';
 
   // 存储 schema 版本。落后于此值就合并一次当前默认类型再写回。
   var SCHEMA_VERSION = 3;
