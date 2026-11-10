@@ -1,0 +1,9 @@
+{
+  "name": "bili-ai-filter",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "test": "node --test",
+    "verify-data": "node scripts/fetch-check.mjs"
+  }
+}

@@ -15,10 +15,42 @@ GET https://api.bilibili.com/x/web-interface/view?bvid=BVxxxx
 
 **这是通用提示通道，AI 只是其中一种取值。必须精确匹配，不能模糊包含判断。**
 
-## 状态
+## 功能（v0.1）
 
-v0.1 开发中：只读官方标识，默认只过滤「含AI生成内容」，其余类型由用户自行勾选。
+- 首页 / 频道页 / 搜索页 / 视频页的卡片按 bvid 查接口，命中选中类型则淡出 150ms 后 `display:none` 隐藏，卡片补位。
+- 默认只过滤「含AI生成内容」，其余类型在面板里自行勾选；类型从实际数据动态发现并累积。
+- 无限滚动、「换一换」产生的新卡片由 `MutationObserver` 捕获，只查询即将进入视口的卡片（`IntersectionObserver` 提前 200px）。
+- 视频页顶部挂提示条（「此视频含 AI 生成内容」），不做自动跳回。
+- 被隐藏的卡片位置出现一条占位条，右上角「我看错了」按钮：点一下恢复显示并永久记住该 bvid。
+- 请求并发上限 4、单请求超时 2000ms、同一 bvid 结果缓存 24h；超时/报错/风控一律保持显示（宁可漏杀不可误杀）。
+- 全部数据存 `chrome.storage.local`，只向 `api.bilibili.com` 发请求。
+
+## 安装（未打包加载）
+
+1. Chrome 地址栏打开 `chrome://extensions`
+2. 右上角打开「开发者模式」
+3. 点「加载已解压的扩展程序」，选本目录（含 `manifest.json` 的那一层）
+4. 打开 `www.bilibili.com` 首页，点扩展图标打开面板确认总开关与类型勾选
 
 ## 目录
 
-待 v0.1 落地后补充。
+```
+manifest.json      MV3 清单（host_permissions 只开 api.bilibili.com）
+core.js            纯逻辑，无浏览器依赖，可被 node 测试加载
+background.js      服务 worker：并发受限的接口请求 + 24h 缓存 + 风控退避
+content.js         内容脚本：卡片发现 / 观察器 / 隐藏与「我看错了」
+popup.html/js/css  面板：总开关、类型多选、本页已过滤数量
+scripts/           数据源核验脚本（手动）
+test/              纯逻辑单测
+```
+
+## 修选择器只改一处
+
+卡片 DOM 选择器集中在 `content.js` 顶部的 `CARD_SELECTORS` 数组。首页改版导致选择器失效时，是安全的一侧（卡片全部可见），不会误杀。
+
+## 测试
+
+```bash
+npm test          # 纯逻辑单测（bvid 提取 / 精确匹配 / manifest 结构）
+npm run verify-data  # 直接调接口核对样本 BV 的 argue_msg（需要网络）
+```
