@@ -56,6 +56,18 @@ h2 {
   line-height: 1.4;
 }
 
+#keywords {
+  width: 100%;
+  box-sizing: border-box;
+  min-height: 64px;
+  padding: 6px 8px;
+  font: inherit;
+  color: #18191c;
+  border: 1px solid #e3e5e7;
+  border-radius: 4px;
+  resize: vertical;
+}
+
 section {
   margin-bottom: 12px;
 }
