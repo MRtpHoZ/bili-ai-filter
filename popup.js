@@ -73,7 +73,7 @@
       selectedTypes = new Set(changes.selectedTypes.newValue || []);
       renderTypes();
     }
-    if (changes.keywords) {
+    if (changes.keywords && document.activeElement !== keywordsEl) {
       keywordsEl.value = (changes.keywords.newValue || []).join('\n');
     }
   });

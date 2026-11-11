@@ -179,3 +179,10 @@ test('关键字：一个词都不填时不过滤', () => {
   assert.equal(Q.matchesKeyword('含AI生成内容', '描述', undefined), false);
   assert.equal(Q.matchesKeyword('含AI生成内容', '描述', null), false);
 });
+
+test('关键字：firstMatchedKeyword 返回命中的词，没命中返回 null', () => {
+  assert.equal(Q.firstMatchedKeyword('【ai】红花蟒蛇娘娘肚子疼', '复刻', ['蛇', '蟒']), '蛇');
+  assert.equal(Q.firstMatchedKeyword('标题不含', '七绝山红蟒精', ['蟒精']), '蟒精');
+  assert.equal(Q.firstMatchedKeyword('无关标题', '无关描述', ['蛇']), null);
+  assert.equal(Q.firstMatchedKeyword('无关', '无关', []), null);
+});

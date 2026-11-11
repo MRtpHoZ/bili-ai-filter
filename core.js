@@ -70,16 +70,21 @@
       .filter((s) => s.length > 0);
   }
 
-  // 标题或描述包含任一关键字即命中，大小写不敏感。空关键字在匹配层再兜一次底。
-  function matchesKeyword(title, desc, keywords) {
-    if (!Array.isArray(keywords) || keywords.length === 0) return false;
+  // 返回第一个命中的关键字（保留用户原始大小写），没命中返回 null。空关键字在匹配层再兜一次底。
+  function firstMatchedKeyword(title, desc, keywords) {
+    if (!Array.isArray(keywords) || keywords.length === 0) return null;
     const t = String(title || '').toLowerCase();
     const d = String(desc || '').toLowerCase();
     for (const raw of keywords) {
       const k = String(raw || '').trim().toLowerCase();
-      if (k && (t.includes(k) || d.includes(k))) return true;
+      if (k && (t.includes(k) || d.includes(k))) return String(raw).trim();
     }
-    return false;
+    return null;
+  }
+
+  // 标题或描述包含任一关键字即命中，大小写不敏感。
+  function matchesKeyword(title, desc, keywords) {
+    return firstMatchedKeyword(title, desc, keywords) !== null;
   }
 
   root.Qingliu = {
@@ -93,6 +98,7 @@
     shouldFilter: shouldFilter,
     parseKeywords: parseKeywords,
     matchesKeyword: matchesKeyword,
+    firstMatchedKeyword: firstMatchedKeyword,
     migrateSettings: migrateSettings,
   };
 })(typeof globalThis !== 'undefined' ? globalThis : this);

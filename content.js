@@ -3,7 +3,7 @@
 (() => {
   'use strict';
 
-  const { extractBvid, shouldFilter, matchesKeyword, parseKeywords, DEFAULT_KNOWN_TYPES, DEFAULT_SELECTED_TYPES, DEFAULT_MODE, migrateSettings, STORAGE_DEFAULTS } = globalThis.Qingliu;
+  const { extractBvid, shouldFilter, matchesKeyword, firstMatchedKeyword, parseKeywords, DEFAULT_KNOWN_TYPES, DEFAULT_SELECTED_TYPES, DEFAULT_MODE, migrateSettings, STORAGE_DEFAULTS } = globalThis.Qingliu;
 
   const CARD_SELECTORS = [
     '.bili-video-card',
@@ -342,8 +342,9 @@
     if (!enabled || whitelist.has(bvid)) return;
     if (shouldFilter(r.msg, selectedTypes)) {
       showBanner(r.msg);
-    } else if (matchesKeyword(r.title, r.desc, keywords)) {
-      showBanner('此视频命中关键字过滤');
+    } else {
+      const kw = firstMatchedKeyword(r.title, r.desc, keywords);
+      if (kw) showBanner(`命中关键字「${kw}」`);
     }
   }
 
