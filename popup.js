@@ -1,11 +1,12 @@
 (() => {
   'use strict';
 
-  const { DEFAULT_KNOWN_TYPES, DEFAULT_SELECTED_TYPES, DEFAULT_MODE, migrateSettings, STORAGE_DEFAULTS } = globalThis.Qingliu;
+  const { DEFAULT_KNOWN_TYPES, DEFAULT_SELECTED_TYPES, DEFAULT_MODE, migrateSettings, parseKeywords, STORAGE_DEFAULTS } = globalThis.Qingliu;
 
   const master = document.getElementById('master');
   const typesEl = document.getElementById('types');
   const modeEl = document.getElementById('mode');
+  const keywordsEl = document.getElementById('keywords');
   const countEl = document.getElementById('count');
 
   let knownTypes = [...DEFAULT_KNOWN_TYPES];
@@ -45,6 +46,10 @@
     chrome.storage.local.set({ enabled: master.checked });
   });
 
+  keywordsEl.addEventListener('input', () => {
+    chrome.storage.local.set({ keywords: parseKeywords(keywordsEl.value) });
+  });
+
   async function refreshCount() {
     try {
       const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
@@ -68,6 +73,9 @@
       selectedTypes = new Set(changes.selectedTypes.newValue || []);
       renderTypes();
     }
+    if (changes.keywords && document.activeElement !== keywordsEl) {
+      keywordsEl.value = (changes.keywords.newValue || []).join('\n');
+    }
   });
 
   chrome.storage.local
@@ -86,6 +94,7 @@
       setMode(data.mode || DEFAULT_MODE);
       selectedTypes = new Set(data.selectedTypes || []);
       knownTypes = [...(data.knownTypes || [])];
+      keywordsEl.value = (data.keywords || []).join('\n');
       renderTypes();
       refreshCount();
     });

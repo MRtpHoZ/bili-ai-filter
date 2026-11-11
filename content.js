@@ -3,7 +3,7 @@
 (() => {
   'use strict';
 
-  const { extractBvid, shouldFilter, DEFAULT_KNOWN_TYPES, DEFAULT_SELECTED_TYPES, DEFAULT_MODE, migrateSettings, STORAGE_DEFAULTS } = globalThis.Qingliu;
+  const { extractBvid, shouldFilter, matchesKeyword, firstMatchedKeyword, parseKeywords, DEFAULT_KNOWN_TYPES, DEFAULT_SELECTED_TYPES, DEFAULT_MODE, migrateSettings, STORAGE_DEFAULTS } = globalThis.Qingliu;
 
   const CARD_SELECTORS = [
     '.bili-video-card',
@@ -19,6 +19,7 @@
   let selectedTypes = new Set(DEFAULT_SELECTED_TYPES);
   let whitelist = new Set();
   let knownTypes = new Set(DEFAULT_KNOWN_TYPES);
+  let keywords = [];
   let filteredCount = 0;
 
   const cards = new Map(); // cardEl -> rec
@@ -65,7 +66,7 @@
 
   function registerCard(card, bvid) {
     if (cards.has(card)) return;
-    const rec = { card, bvid, msg: undefined, querying: false, hidden: false, placeholder: null, gridItem: null, restorePosition: false };
+    const rec = { card, bvid, msg: undefined, title: undefined, desc: undefined, querying: false, hidden: false, placeholder: null, gridItem: null, restorePosition: false };
     cards.set(card, rec);
     if (observer) observer.observe(card);
   }
@@ -186,11 +187,12 @@
   }
 
   function decide(rec) {
-    if (enabled && shouldFilter(rec.msg, selectedTypes) && !whitelist.has(rec.bvid)) {
-      hideCard(rec);
-    } else {
-      showCard(rec);
-    }
+    const hit =
+      enabled &&
+      !whitelist.has(rec.bvid) &&
+      (shouldFilter(rec.msg, selectedTypes) || matchesKeyword(rec.title, rec.desc, keywords));
+    if (hit) hideCard(rec);
+    else showCard(rec);
   }
 
   async function queryBvids(recs) {
@@ -207,8 +209,12 @@
       const r = results[rec.bvid];
       if (!r || r.error) {
         rec.msg = undefined;
+        rec.title = undefined;
+        rec.desc = undefined;
       } else {
         rec.msg = r.msg;
+        rec.title = r.title;
+        rec.desc = r.desc;
         if (r.msg && !knownTypes.has(r.msg)) {
           knownTypes.add(r.msg);
           chrome.storage.local.set({ knownTypes: [...knownTypes] });
@@ -237,6 +243,8 @@
         if (rec.hidden) showCard(rec);
         rec.bvid = bvid;
         rec.msg = undefined;
+        rec.title = undefined;
+        rec.desc = undefined;
         rec.querying = false;
         if (observer) {
           observer.unobserve(card);
@@ -273,6 +281,7 @@
     selectedTypes = new Set(data.selectedTypes || []);
     whitelist = new Set(data.whitelist || []);
     knownTypes = new Set(data.knownTypes || []);
+    keywords = parseKeywords(data.keywords);
     mode = newMode;
     if (modeChanged) {
       // 模式变了：先把已隐藏的全部恢复，再按新模式重新判断，避免旧模式的痕迹残留。
@@ -325,13 +334,17 @@
     } catch (e) {
       return;
     }
-    if (!r || r.error || !r.msg) return;
-    if (!knownTypes.has(r.msg)) {
+    if (!r || r.error) return;
+    if (r.msg && !knownTypes.has(r.msg)) {
       knownTypes.add(r.msg);
       chrome.storage.local.set({ knownTypes: [...knownTypes] });
     }
-    if (enabled && shouldFilter(r.msg, selectedTypes) && !whitelist.has(bvid)) {
+    if (!enabled || whitelist.has(bvid)) return;
+    if (shouldFilter(r.msg, selectedTypes)) {
       showBanner(r.msg);
+    } else {
+      const kw = firstMatchedKeyword(r.title, r.desc, keywords);
+      if (kw) showBanner(`命中关键字「${kw}」`);
     }
   }
 
@@ -357,7 +370,7 @@
 
   chrome.storage.onChanged.addListener((changes, area) => {
     if (area !== 'local') return;
-    const keys = ['enabled', 'mode', 'selectedTypes', 'whitelist', 'knownTypes'];
+    const keys = ['enabled', 'mode', 'selectedTypes', 'whitelist', 'knownTypes', 'keywords'];
     if (keys.some((k) => changes[k])) loadSettings();
   });
 

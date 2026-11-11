@@ -147,3 +147,42 @@ test('接线：当前版本 + 用户取消默认类型 → 不被补回', () => 
   assert.equal(out, raw);
   assert.deepEqual(out.selectedTypes, []);
 });
+
+test('关键字：命中标题', () => {
+  assert.equal(Q.matchesKeyword('【ai】红花蟒蛇娘娘肚子疼', '复刻《西游记》七绝山红蟒精', ['蛇']), true);
+  assert.equal(Q.matchesKeyword('无关标题', '无关描述', ['蛇']), false);
+});
+
+test('关键字：命中描述', () => {
+  assert.equal(Q.matchesKeyword('标题不含词', '复刻《西游记》七绝山红蟒精', ['蟒精']), true);
+});
+
+test('关键字：大小写不敏感', () => {
+  assert.equal(Q.matchesKeyword('AI 生成视频', '', ['ai']), true);
+  assert.equal(Q.matchesKeyword('ai 生成视频', '', ['AI']), true);
+  assert.equal(Q.matchesKeyword('Ai 生成视频', '', ['AI']), true);
+});
+
+test('关键字：空词被 trim 后丢掉，不会整页杀光', () => {
+  assert.deepEqual(Q.parseKeywords(['  ', 'AI', '', ' 蛇 ']), ['AI', '蛇']);
+  assert.equal(Q.matchesKeyword('任意标题', '任意描述', ['   ', '']), false);
+});
+
+test('关键字：多词任一命中', () => {
+  const kws = ['蟒蛇', '奥特曼'];
+  assert.equal(Q.matchesKeyword('奥特曼打怪兽', '', kws), true);
+  assert.equal(Q.matchesKeyword('完全无关', '也无关', kws), false);
+});
+
+test('关键字：一个词都不填时不过滤', () => {
+  assert.equal(Q.matchesKeyword('含AI生成内容', '描述', []), false);
+  assert.equal(Q.matchesKeyword('含AI生成内容', '描述', undefined), false);
+  assert.equal(Q.matchesKeyword('含AI生成内容', '描述', null), false);
+});
+
+test('关键字：firstMatchedKeyword 返回命中的词，没命中返回 null', () => {
+  assert.equal(Q.firstMatchedKeyword('【ai】红花蟒蛇娘娘肚子疼', '复刻', ['蛇', '蟒']), '蛇');
+  assert.equal(Q.firstMatchedKeyword('标题不含', '七绝山红蟒精', ['蟒精']), '蟒精');
+  assert.equal(Q.firstMatchedKeyword('无关标题', '无关描述', ['蛇']), null);
+  assert.equal(Q.firstMatchedKeyword('无关', '无关', []), null);
+});

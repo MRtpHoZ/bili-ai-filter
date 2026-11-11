@@ -32,6 +32,7 @@
     selectedTypes: DEFAULT_SELECTED_TYPES.slice(),
     whitelist: [],
     knownTypes: DEFAULT_KNOWN_TYPES.slice(),
+    keywords: [],
     schemaVersion: 1,
   };
 
@@ -60,6 +61,32 @@
     return !!msg && selectedTypes.has(msg);
   }
 
+  // 一行一个关键字；trim 后丢空词。空词若留下，''.includes 恒真会把整页杀光。
+  function parseKeywords(raw) {
+    if (Array.isArray(raw)) raw = raw.join('\n');
+    return String(raw || '')
+      .split('\n')
+      .map((s) => s.trim())
+      .filter((s) => s.length > 0);
+  }
+
+  // 返回第一个命中的关键字（保留用户原始大小写），没命中返回 null。空关键字在匹配层再兜一次底。
+  function firstMatchedKeyword(title, desc, keywords) {
+    if (!Array.isArray(keywords) || keywords.length === 0) return null;
+    const t = String(title || '').toLowerCase();
+    const d = String(desc || '').toLowerCase();
+    for (const raw of keywords) {
+      const k = String(raw || '').trim().toLowerCase();
+      if (k && (t.includes(k) || d.includes(k))) return String(raw).trim();
+    }
+    return null;
+  }
+
+  // 标题或描述包含任一关键字即命中，大小写不敏感。
+  function matchesKeyword(title, desc, keywords) {
+    return firstMatchedKeyword(title, desc, keywords) !== null;
+  }
+
   root.Qingliu = {
     BVID_RE: BVID_RE,
     SCHEMA_VERSION: SCHEMA_VERSION,
@@ -69,6 +96,9 @@
     DEFAULT_MODE: DEFAULT_MODE,
     extractBvid: extractBvid,
     shouldFilter: shouldFilter,
+    parseKeywords: parseKeywords,
+    matchesKeyword: matchesKeyword,
+    firstMatchedKeyword: firstMatchedKeyword,
     migrateSettings: migrateSettings,
   };
 })(typeof globalThis !== 'undefined' ? globalThis : this);

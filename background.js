@@ -39,8 +39,8 @@
     chrome.storage.local.set({ [CACHE_KEY]: obj });
   }
 
-  function setCached(bvid, msg) {
-    cache.set(bvid, { msg, ts: Date.now() });
+  function setCached(bvid, msg, title, desc) {
+    cache.set(bvid, { msg, title, desc, ts: Date.now() });
     persistCache();
   }
 
@@ -57,9 +57,12 @@
           } else if (json.code !== 0) {
             resolve({ error: 'api:' + json.code });
           } else {
+            const data = json.data || {};
             const msg =
-              (json.data && json.data.argue_info && json.data.argue_info.argue_msg) || '';
-            resolve({ msg });
+              (data.argue_info && data.argue_info.argue_msg) || '';
+            const title = data.title || '';
+            const desc = data.desc || '';
+            resolve({ msg, title, desc });
           }
         })
         .catch((e) => {
@@ -96,8 +99,9 @@
     const jobs = [];
     for (const bvid of bvids) {
       const hit = cache.get(bvid);
-      if (hit) {
-        results[bvid] = { msg: hit.msg };
+      // 旧缓存只有 msg、没有 title/desc，当未命中重新取，否则关键字过滤会静默失效。
+      if (hit && typeof hit.title === 'string' && typeof hit.desc === 'string') {
+        results[bvid] = { msg: hit.msg, title: hit.title, desc: hit.desc };
         continue;
       }
       const until = rateLimitedUntil.get(bvid);
@@ -109,8 +113,8 @@
         schedule(async () => {
           const r = await fetchArgue(bvid);
           if (r.msg !== undefined) {
-            setCached(bvid, r.msg);
-            results[bvid] = { msg: r.msg };
+            setCached(bvid, r.msg, r.title, r.desc);
+            results[bvid] = { msg: r.msg, title: r.title, desc: r.desc };
           } else if (r.error === 'ratelimited') {
             rateLimitedUntil.set(bvid, Date.now() + RATE_LIMIT_COOLDOWN_MS);
             results[bvid] = { error: 'ratelimited' };
